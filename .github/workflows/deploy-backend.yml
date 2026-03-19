@@ -1,0 +1,114 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+      EB_APPLICATION_NAME: ${{ vars.EB_APPLICATION_NAME }}
+      EB_ENVIRONMENT_NAME: ${{ vars.EB_ENVIRONMENT_NAME }}
+      EB_SOURCE_BUCKET: ${{ vars.EB_SOURCE_BUCKET }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Prepare Elastic Beanstalk bundle
+        run: |
+          rm -rf /tmp/backend-bundle
+          mkdir -p /tmp/backend-bundle
+          cp -R backend/src /tmp/backend-bundle/src
+          cp -R backend/prisma /tmp/backend-bundle/prisma
+          cp -R backend/.ebextensions /tmp/backend-bundle/.ebextensions
+          cp backend/Dockerfile.backend /tmp/backend-bundle/Dockerfile
+          cp backend/entrypoint.sh /tmp/backend-bundle/entrypoint.sh
+          cp backend/package.json /tmp/backend-bundle/package.json
+          cp backend/package-lock.json /tmp/backend-bundle/package-lock.json
+          cp backend/tsconfig.json /tmp/backend-bundle/tsconfig.json
+          chmod +x /tmp/backend-bundle/entrypoint.sh
+
+      - name: Create backend bundle zip
+        id: bundle
+        run: |
+          VERSION_LABEL="backend-${GITHUB_SHA}"
+          BUNDLE_KEY="${VERSION_LABEL}.zip"
+          cd /tmp/backend-bundle
+          zip -rq "/tmp/${BUNDLE_KEY}" .
+          echo "version_label=${VERSION_LABEL}" >> "$GITHUB_OUTPUT"
+          echo "bundle_key=${BUNDLE_KEY}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload bundle to S3
+        run: |
+          aws s3 cp \
+            "/tmp/${{ steps.bundle.outputs.bundle_key }}" \
+            "s3://${EB_SOURCE_BUCKET}/${{ steps.bundle.outputs.bundle_key }}"
+
+      - name: Create Elastic Beanstalk application version
+        run: |
+          aws elasticbeanstalk create-application-version \
+            --application-name "${EB_APPLICATION_NAME}" \
+            --version-label "${{ steps.bundle.outputs.version_label }}" \
+            --source-bundle S3Bucket="${EB_SOURCE_BUCKET}",S3Key="${{ steps.bundle.outputs.bundle_key }}"
+
+      - name: Update Elastic Beanstalk environment
+        run: |
+          aws elasticbeanstalk update-environment \
+            --environment-name "${EB_ENVIRONMENT_NAME}" \
+            --version-label "${{ steps.bundle.outputs.version_label }}"
+
+      - name: Wait for environment to become healthy
+        run: |
+          for _ in $(seq 1 40); do
+            STATUS=$(aws elasticbeanstalk describe-environments \
+              --application-name "${EB_APPLICATION_NAME}" \
+              --environment-names "${EB_ENVIRONMENT_NAME}" \
+              --query 'Environments[0].Status' \
+              --output text)
+            HEALTH=$(aws elasticbeanstalk describe-environments \
+              --application-name "${EB_APPLICATION_NAME}" \
+              --environment-names "${EB_ENVIRONMENT_NAME}" \
+              --query 'Environments[0].Health' \
+              --output text)
+
+            echo "Status=${STATUS} Health=${HEALTH}"
+
+            if [ "${STATUS}" = "Ready" ] && [ "${HEALTH}" = "Green" ]; then
+              exit 0
+            fi
+
+            sleep 15
+          done
+
+          echo "Elastic Beanstalk environment did not become healthy in time."
+          exit 1

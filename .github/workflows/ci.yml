@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "infrastructure/**"
+      - ".github/workflows/ci.yml"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Biome check
+        run: npx --yes @biomejs/biome check backend/src frontend/kyron-medical/src
+
+  backend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Build backend
+        working-directory: backend
+        run: npm run build
+
+  frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/kyron-medical/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend/kyron-medical
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend/kyron-medical
+        run: npm run build
+
+  terraform:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform fmt check
+        working-directory: infrastructure
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init
+        working-directory: infrastructure
+        run: terraform init -backend=false
+
+      - name: Terraform validate
+        working-directory: infrastructure
+        run: terraform validate
