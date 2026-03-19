@@ -3,23 +3,14 @@ import { getLogger } from "../config/logger";
 
 const logger = getLogger("SeedSlots");
 
-// Each provider gets a distinct set of slot times to vary across the week
-const PROVIDER_SLOT_TIMES: Record<number, { hour: number; minute: number }[]> = {
-  0: [{ hour: 9, minute: 0 }, { hour: 11, minute: 30 }, { hour: 14, minute: 0 }, { hour: 15, minute: 30 }],
-  1: [{ hour: 9, minute: 30 }, { hour: 11, minute: 0 }, { hour: 13, minute: 30 }, { hour: 16, minute: 0 }],
-  2: [{ hour: 10, minute: 0 }, { hour: 12, minute: 0 }, { hour: 14, minute: 30 }],
-  3: [{ hour: 9, minute: 0 }, { hour: 10, minute: 30 }, { hour: 13, minute: 0 }, { hour: 15, minute: 0 }],
-  4: [{ hour: 9, minute: 30 }, { hour: 11, minute: 0 }, { hour: 13, minute: 30 }, { hour: 15, minute: 30 }],
-};
+const SLOT_DURATION_MINUTES = 30;
+const CLINIC_OPEN_HOUR = 9;
+const CLINIC_CLOSE_HOUR = 17;
+const SLOT_TIMES: { hour: number; minute: number }[] = [];
 
-// Days per week each provider is available (Mon=1 ... Fri=5), varied per provider
-const PROVIDER_DAYS: Record<number, number[]> = {
-  0: [1, 3, 5],       // Mon, Wed, Fri
-  1: [1, 2, 4],       // Mon, Tue, Thu
-  2: [2, 3, 5],       // Tue, Wed, Fri
-  3: [1, 3, 4],       // Mon, Wed, Thu
-  4: [2, 4, 5],       // Tue, Thu, Fri
-};
+for (let hour = CLINIC_OPEN_HOUR; hour < CLINIC_CLOSE_HOUR; hour += 1) {
+  SLOT_TIMES.push({ hour, minute: 0 }, { hour, minute: 30 });
+}
 
 /**
  * Create a Date representing a specific clock time in America/Los_Angeles,
@@ -77,25 +68,21 @@ export async function seedSlots() {
   }
 
   const windowStart = new Date(now);
-  windowStart.setDate(now.getDate() + 30);
+  windowStart.setHours(0, 0, 0, 0);
 
   const windowEnd = new Date(now);
   windowEnd.setDate(now.getDate() + 60);
+  windowEnd.setHours(23, 59, 59, 999);
 
   const allWeekdays = getWeekdaysInRange(windowStart, windowEnd);
 
   const slots: { providerId: string; startTime: Date; endTime: Date; available: boolean }[] = [];
 
-  providers.forEach((provider, providerIndex) => {
-    const allowedDays = PROVIDER_DAYS[providerIndex] ?? [1, 3, 5];
-    const times = PROVIDER_SLOT_TIMES[providerIndex] ?? [{ hour: 9, minute: 0 }];
-
-    const providerDays = allWeekdays.filter((d) => allowedDays.includes(d.getDay()));
-
-    providerDays.forEach((day) => {
-      times.forEach(({ hour, minute }) => {
+  providers.forEach((provider) => {
+    allWeekdays.forEach((day) => {
+      SLOT_TIMES.forEach(({ hour, minute }) => {
         const startTime = makeLADateTime(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), hour, minute);
-        const endTime = new Date(startTime.getTime() + 30 * 60 * 1000);
+        const endTime = new Date(startTime.getTime() + SLOT_DURATION_MINUTES * 60 * 1000);
         slots.push({ providerId: provider.id, startTime, endTime, available: true });
       });
     });

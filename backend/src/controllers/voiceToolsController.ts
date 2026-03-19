@@ -390,8 +390,7 @@ export const getAvailableSlots = async (req: Request, res: Response) => {
   }
 
   const now = new Date();
-  // If month is specified, search from now; otherwise from the standard 30-day start
-  const windowStart = month ? now : (() => { const d = new Date(now); d.setDate(d.getDate() + 30); return d; })();
+  const windowStart = now;
   const windowEnd = new Date(now);
   windowEnd.setDate(now.getDate() + 60);
 
@@ -416,7 +415,11 @@ export const getAvailableSlots = async (req: Request, res: Response) => {
   let filtered = slots;
 
   if (month) {
-    filtered = filtered.filter((s) => getLATimeParts(s.startTime).month === month);
+    // month can be "2026-03" (YYYY-MM) or a plain month number string "3"
+    const targetMonth = month.includes("-")
+      ? parseInt(month.split("-")[1], 10)
+      : parseInt(month, 10);
+    filtered = filtered.filter((s) => getLATimeParts(s.startTime).month === targetMonth);
   }
 
   if (dayOfWeek) {
