@@ -1,0 +1,188 @@
+/* ─────────────────────────────
+   Navbar pill background override
+   glass-surface--svg uses light-dark() which resolves to ~black in dark mode.
+   Force a navy-blue tint on the pill regardless of SVG filter path.
+────────────────────────────── */
+.navbar-pill.glass-surface--svg,
+.navbar-pill.glass-surface--fallback {
+  background: rgba(10, 28, 60, 0.82) !important;
+  border: 1px solid rgba(59, 130, 246, 0.28);
+  backdrop-filter: blur(18px) saturate(1.6);
+  -webkit-backdrop-filter: blur(18px) saturate(1.6);
+}
+
+/* ─────────────────────────────
+   Sections
+────────────────────────────── */
+.left-section-nav {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.right-section-nav {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.9rem;
+  width: 100%;
+}
+
+/* ─────────────────────────────
+   Brand
+────────────────────────────── */
+.brand-logo {
+  display: inline-flex;
+  align-items: center;
+  font-size: clamp(1.05rem, 1.3vw, 1.25rem);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--text-primary, #f0f4ff);
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+/* ─────────────────────────────
+   User dropdown
+────────────────────────────── */
+.navbar-user-dropdown {
+  position: relative;
+}
+
+.navbar-user-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 0.45rem 0.75rem;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.navbar-user-trigger:hover,
+.navbar-user-trigger--open {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.navbar-user {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.navbar-user__label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(240, 244, 255, 0.45);
+}
+
+.navbar-user__name {
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-primary, #f0f4ff);
+}
+
+.navbar-user-chevron {
+  color: rgba(240, 244, 255, 0.45);
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.navbar-user-chevron--up {
+  transform: rotate(180deg);
+}
+
+/* ─────────────────────────────
+   Dropdown menu
+────────────────────────────── */
+.navbar-dropdown {
+  position: absolute;
+  top: calc(100% + 0.55rem);
+  right: 0;
+  min-width: 11rem;
+  background: rgba(10, 20, 40, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  animation: dropdownFadeIn 0.15s ease;
+  z-index: 100;
+}
+
+@keyframes dropdownFadeIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.navbar-dropdown__item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: rgba(240, 244, 255, 0.82);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.navbar-dropdown__item:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #f0f4ff;
+}
+
+.navbar-dropdown__item--danger {
+  color: rgba(248, 113, 113, 0.8);
+}
+
+.navbar-dropdown__item--danger:hover {
+  background: rgba(248, 113, 113, 0.08);
+  color: #f87171;
+}
+
+.navbar-dropdown__divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 0.15rem 0;
+}
+
+/* ─────────────────────────────
+   Responsive
+────────────────────────────── */
+@media (max-width: 768px) {
+  .navbar-pill {
+    width: 90vw;
+    height: clamp(3rem, 8vh, 5rem);
+  }
+
+  .navbar-user__name {
+    max-width: 8rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .navbar-pill {
+    width: 95vw;
+  }
+
+  .navbar-user__name {
+    max-width: 6rem;
+  }
+}

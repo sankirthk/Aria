@@ -1,0 +1,50 @@
+.cta {
+  width: 100vw;
+  min-height: calc(100vh - 300px);
+  display: flex;
+  flex-direction: column;
+  justify-content: start;
+  align-items: center;
+  margin-top: clamp(2rem, 10vh, 20vh + 1rem);
+  text-align: center;
+}
+
+.header {
+  font-size: clamp(3rem, 7vw, 7rem);
+  z-index: 3;
+  line-height: 1.1;
+}
+
+.subheader {
+  color: rgb(181, 181, 181);
+  z-index: 3;
+  font-size: clamp(1rem, 2vw, 1.5rem);
+  padding-top: clamp(1rem, 4vh, 4rem);
+  line-height: 2.5;
+  font-weight: 700;
+  max-width: 80%;
+}
+
+.cta .login-btn {
+  margin-top: 15rem;
+  z-index: 3;
+  font-family: inherit;
+  font-size: 2rem;
+  font-weight: 700;
+  padding: 2rem 3rem;
+  color: rgb(181, 181, 181);
+  background: radial-gradient(circle at center, #1a2a5e 0%, #0a1628 100%);
+  border: 3px solid rgba(59, 130, 246, 0.5);
+  border-radius: 1rem;
+  box-shadow: 0 0 32px rgba(37, 99, 235, 0.2);
+  cursor: pointer;
+  transition: all ease-in-out 0.4s;
+}
+
+.cta .login-btn:hover {
+  background: radial-gradient(circle at center, #2563eb 0%, #0d1f3c 100%);
+  color: #fff;
+  border-color: rgba(59, 130, 246, 0.9);
+  box-shadow: 0 0 48px rgba(37, 99, 235, 0.45);
+  transform: translateY(-2px);
+}

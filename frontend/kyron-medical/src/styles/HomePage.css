@@ -1,0 +1,15 @@
+.home-page-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  width: 100%;
+  background: radial-gradient(circle at center, #252134 0%, #000000 100%);
+}
+
+.home-content {
+  flex: 1; /* fill remaining vertical space */
+  display: flex;
+  align-items: center; /* vertically center */
+  justify-content: center; /* horizontally center */
+  padding-top: 8rem; /* offset if NavBar is fixed (height ~6rem + spacing) */
+}

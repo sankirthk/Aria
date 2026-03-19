@@ -1,0 +1,926 @@
+openapi: 3.1.0
+info:
+  title: Westside Medical Group API
+  version: 1.0.0
+  description: >
+    AI-powered patient portal for Westside Medical Group. Patients interact with Aria,
+    an AI assistant, to schedule, cancel, and reschedule appointments via web
+    chat or phone call.
+
+servers:
+  - url: http://localhost:8000
+    description: Local development
+
+tags:
+  - name: Auth
+    description: Invite validation and signup (custom). Better Auth routes at /api/auth/*.
+  - name: Patient
+    description: Patient profile management
+  - name: Chat
+    description: AI chat sessions and message streaming
+  - name: Appointments
+    description: Booking management
+  - name: Providers
+    description: Provider and slot lookup
+  - name: Voice
+    description: Vapi voice call handoff
+  - name: Webhook
+    description: Vapi inbound webhook (assistant-request, end-of-call-report)
+  - name: Voice Tools
+    description: Vapi server tools called during a live voice call
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: better-auth.session_token
+      description: Set automatically by Better Auth on login
+    vapiBearer:
+      type: http
+      scheme: bearer
+      description: Value must match VAPI_WEBHOOK_SECRET env var
+
+  schemas:
+    ApiResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          description: Response payload (varies per endpoint)
+        error:
+          type: string
+        message:
+          type: string
+        count:
+          type: integer
+        details:
+          description: Zod validation error details
+
+    Patient:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        dateOfBirth:
+          type: string
+          description: ISO date YYYY-MM-DD
+        phone:
+          type: string
+          description: E.164 format e.g. +14155550123
+        profileComplete:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Provider:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        specialty:
+          type: string
+        keywords:
+          type: array
+          items:
+            type: string
+        bio:
+          type: string
+
+    Slot:
+      type: object
+      properties:
+        id:
+          type: string
+        providerId:
+          type: string
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        available:
+          type: boolean
+
+    Booking:
+      type: object
+      properties:
+        id:
+          type: string
+        patientId:
+          type: string
+        providerId:
+          type: string
+        slotId:
+          type: string
+        status:
+          type: string
+          enum: [confirmed, cancelled]
+        createdAt:
+          type: string
+          format: date-time
+        provider:
+          $ref: '#/components/schemas/Provider'
+        slot:
+          $ref: '#/components/schemas/Slot'
+
+    ChatSession:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        active:
+          type: boolean
+        summary:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+
+    ChatMessage:
+      type: object
+      properties:
+        id:
+          type: string
+        sessionId:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant, tool]
+        content:
+          type: string
+        toolName:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    SessionPreview:
+      type: object
+      properties:
+        id:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        messages:
+          type: array
+          description: First message only (preview)
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+        _count:
+          type: object
+          properties:
+            messages:
+              type: integer
+
+    VapiToolRequest:
+      type: object
+      description: >
+        Standard body Vapi sends to all server tool endpoints.
+        The tool name and arguments are nested inside toolCallList.
+      properties:
+        message:
+          type: object
+          properties:
+            type:
+              type: string
+              example: tool-calls
+            call:
+              type: object
+              properties:
+                id:
+                  type: string
+                  description: Vapi's call ID
+                customer:
+                  type: object
+                  properties:
+                    number:
+                      type: string
+                      description: Patient's E.164 phone number
+            toolCallList:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: Tool call ID to echo back in results
+                  type:
+                    type: string
+                    example: function
+                  function:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      arguments:
+                        type: string
+                        description: JSON-encoded tool arguments
+
+    VapiToolResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              toolCallId:
+                type: string
+              result:
+                type: string
+                description: String result Aria reads and acts on
+
+paths:
+  /kyron/api/v1/auth/validate-invite:
+    post:
+      tags: [Auth]
+      summary: Validate invite code
+      description: Checks that an invite code exists, is not expired, and has remaining uses.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+      responses:
+        '200':
+          description: Invite valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '400':
+          description: Invalid or expired invite
+
+  /kyron/api/v1/auth/signup:
+    post:
+      tags: [Auth]
+      summary: Register a new patient account
+      description: Creates a Better Auth user, sends email verification. Requires a valid invite code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password, inviteCode]
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                inviteCode:
+                  type: string
+                callbackURL:
+                  type: string
+                  description: Optional post-verification redirect target
+      responses:
+        '201':
+          description: Account created, verification email sent
+        '400':
+          description: Validation error or invalid invite
+        '409':
+          description: Email already registered
+        '429':
+          description: Too many signup attempts
+
+  /api/auth/{path}:
+    all:
+      tags: [Auth]
+      summary: Better Auth routes
+      description: >
+        All Better Auth routes are handled here: sign-in/email, sign-out,
+        get-session, forgot-password, reset-password, verify-email, etc.
+        Refer to Better Auth documentation for full route list.
+      parameters:
+        - in: path
+          name: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Varies by route
+
+  /kyron/api/v1/patient/profile:
+    get:
+      tags: [Patient]
+      summary: Get patient profile
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Patient profile
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Patient'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Profile not found
+
+    put:
+      tags: [Patient]
+      summary: Update patient profile
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                firstName:
+                  type: string
+                lastName:
+                  type: string
+                dateOfBirth:
+                  type: string
+                  description: ISO date YYYY-MM-DD
+                phone:
+                  type: string
+                  description: E.164 format
+      responses:
+        '200':
+          description: Updated profile
+        '400':
+          description: Validation error
+        '401':
+          description: Unauthorized
+
+  /kyron/api/v1/chat/session:
+    post:
+      tags: [Chat]
+      summary: Create a new chat session
+      security:
+        - sessionCookie: []
+      responses:
+        '201':
+          description: New session created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ChatSession'
+        '401':
+          description: Unauthorized
+
+  /kyron/api/v1/chat/session/active:
+    get:
+      tags: [Chat]
+      summary: Get active session (or create one if none exists)
+      description: Returns the most recently updated active session with all messages.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Active session with messages
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ChatSession'
+        '401':
+          description: Unauthorized
+
+  /kyron/api/v1/chat/sessions:
+    get:
+      tags: [Chat]
+      summary: List all chat sessions (newest first)
+      description: Returns session previews with first message content and message count.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: List of session previews
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/SessionPreview'
+        '401':
+          description: Unauthorized
+
+  /kyron/api/v1/chat/session/{sessionId}:
+    get:
+      tags: [Chat]
+      summary: Get a specific session by ID with all messages
+      security:
+        - sessionCookie: []
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session with messages
+        '401':
+          description: Unauthorized
+        '404':
+          description: Session not found
+    delete:
+      tags: [Chat]
+      summary: Delete a specific chat session
+      security:
+        - sessionCookie: []
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session deleted
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Session not found
+
+  /kyron/api/v1/chat/session/{sessionId}/message:
+    post:
+      tags: [Chat]
+      summary: Send a message and stream the AI response (SSE)
+      description: >
+        Opens a Server-Sent Events stream. Events: chunk (token), tool_call
+        (agent executing tool), done (stream complete with bookingCreated flag),
+        error (unrecoverable).
+      security:
+        - sessionCookie: []
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                  description: Patient's message text
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  event: chunk\ndata: {"text":"..."}\n\n
+                  event: tool_call\ndata: {"status":"running"}\n\n
+                  event: done\ndata: {"messageId":"...","bookingCreated":false,"booking":null}\n\n
+                  event: error\ndata: {"message":"..."}\n\n
+        '401':
+          description: Unauthorized
+
+  /kyron/api/v1/appointments:
+    get:
+      tags: [Appointments]
+      summary: Get upcoming and past bookings
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Upcoming and past bookings
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          upcoming:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Booking'
+                          past:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Booking'
+        '401':
+          description: Unauthorized
+
+  /kyron/api/v1/appointments/book:
+    post:
+      tags: [Appointments]
+      summary: Book an appointment slot directly
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slotId]
+              properties:
+                slotId:
+                  type: string
+      responses:
+        '201':
+          description: Booking confirmed, confirmation email sent
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Booking'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Slot not found
+        '409':
+          description: Slot no longer available
+
+  /kyron/api/v1/providers:
+    get:
+      tags: [Providers]
+      summary: List all providers
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Provider list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Provider'
+
+  /kyron/api/v1/providers/{id}/slots:
+    get:
+      tags: [Providers]
+      summary: Get available slots for a provider
+      security:
+        - sessionCookie: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Available slots
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Slot'
+
+  /kyron/api/v1/voice/handoff:
+    post:
+      tags: [Voice]
+      summary: Initiate an outbound Vapi call to the patient
+      description: >
+        Serializes the current chat session transcript and initiates an outbound
+        call via Vapi. Aria picks up the conversation where the chat left off.
+        If the patient profile is incomplete, pass quickCall.phone and quickCall.name.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId]
+              properties:
+                sessionId:
+                  type: string
+                quickCall:
+                  type: object
+                  description: Optional — supply if patient profile is incomplete
+                  properties:
+                    phone:
+                      type: string
+                      description: E.164 phone number
+                    name:
+                      type: string
+      responses:
+        '200':
+          description: Call initiated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          callId:
+                            type: string
+                          phone:
+                            type: string
+                          message:
+                            type: string
+        '400':
+          description: No phone/name available
+        '401':
+          description: Unauthorized
+
+  /webhook:
+    post:
+      tags: [Webhook]
+      summary: Vapi inbound webhook
+      description: >
+        Handles two Vapi event types:
+        - assistant-request: fired when an inbound call arrives, returns assistantId + context overrides.
+        - end-of-call-report: fired when a call ends, stores call summary and structured outputs and closes the linked chat session.
+      security:
+        - vapiBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      enum: [assistant-request, end-of-call-report]
+      responses:
+        '200':
+          description: Handled successfully
+        '400':
+          description: Unrecognised event type
+        '401':
+          description: Unauthorized
+
+  /voice/tools/getContext:
+    post:
+      tags: [Voice Tools]
+      summary: Fetch patient context during a live call
+      description: >
+        Returns the patient's latest chat summary, recent messages, upcoming
+        appointments (with bookingIds), and profile. Patient is identified from
+        the tool-call payload / call envelope. Used mainly by inbound calls
+        where context was not pre-injected.
+      security:
+        - vapiBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VapiToolRequest'
+      responses:
+        '200':
+          description: Tool result with patient context string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VapiToolResponse'
+        '401':
+          description: Unauthorized
+
+  /voice/tools/getProviders:
+    post:
+      tags: [Voice Tools]
+      summary: Return all providers with specialties and keywords
+      description: >
+        Used when the patient asks what doctors or services are available.
+        For scheduling, use getAvailableSlots directly with concern, providerName, or specialty.
+      security:
+        - vapiBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VapiToolRequest'
+      responses:
+        '200':
+          description: Provider list as JSON string in tool result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VapiToolResponse'
+
+  /voice/tools/getAvailableSlots:
+    post:
+      tags: [Voice Tools]
+      summary: Semantic provider match + available slot lookup
+      description: >
+        Accepts a free-text concern, provider name, or specialty,
+        resolves the best provider,
+        and returns available slots for that provider in the next 60 days.
+      security:
+        - vapiBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/VapiToolRequest'
+                - type: object
+                  description: >
+                    arguments JSON in toolCallList[0].function.arguments:
+                    { "concern": "chest pain", "providerName": "Dr. Jane Smith", "specialty": "Cardiology", "dayOfWeek": "monday", "timeOfDay": "morning", "month": 4, "limit": 5 }
+      responses:
+        '200':
+          description: Matched provider and available slots
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VapiToolResponse'
+
+  /voice/tools/bookAppointment:
+    post:
+      tags: [Voice Tools]
+      summary: Book an appointment slot during a voice call
+      description: >
+        Atomically books the slot, marks it unavailable, sends a confirmation
+        email, and flags the VoiceCall record. Only call after explicit patient
+        confirmation. For cold callers, this tool can also create the patient
+        record if `firstName`, `lastName`, `dateOfBirth`, and `phone` are supplied.
+      security:
+        - vapiBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/VapiToolRequest'
+                - type: object
+                  description: 'arguments: { "slotId": "..." }'
+            examples:
+              existingPatient:
+                value:
+                  message:
+                    type: tool-calls
+                    toolCallList:
+                      - id: call_123
+                        type: function
+                        function:
+                          name: bookAppointment
+                          arguments:
+                            slotId: slot_123
+              coldCaller:
+                value:
+                  message:
+                    type: tool-calls
+                    toolCallList:
+                      - id: call_124
+                        type: function
+                        function:
+                          name: bookAppointment
+                          arguments:
+                            slotId: slot_123
+                            firstName: Jane
+                            lastName: Doe
+                            dateOfBirth: "1990-01-01"
+                            phone: "+13105550100"
+      responses:
+        '200':
+          description: Booking confirmation or error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VapiToolResponse'
+
+  /voice/tools/cancelAppointment:
+    post:
+      tags: [Voice Tools]
+      summary: Cancel a future appointment during a voice call
+      description: >
+        Cancels the booking and frees the slot. Rejects past appointments.
+        bookingId comes from getContext. Always confirm with the patient first.
+      security:
+        - vapiBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/VapiToolRequest'
+                - type: object
+                  description: 'arguments: { "bookingId": "..." }'
+      responses:
+        '200':
+          description: Cancellation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VapiToolResponse'
+
+  /voice/tools/rescheduleAppointment:
+    post:
+      tags: [Voice Tools]
+      summary: Reschedule a future appointment during a voice call
+      description: >
+        Atomically frees the old slot and books the new one. Rejects past or
+        cancelled appointments. Call getAvailableSlots first to get the newSlotId.
+      security:
+        - vapiBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/VapiToolRequest'
+                - type: object
+                  description: 'arguments: { "bookingId": "...", "newSlotId": "..." }'
+      responses:
+        '200':
+          description: Reschedule result with new provider, date, time
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VapiToolResponse'
