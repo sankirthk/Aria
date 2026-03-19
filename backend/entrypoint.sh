@@ -34,6 +34,8 @@ fi
 
 # Build TypeScript before starting (optional: skip in dev if using tsx)
 if [ "$NODE_ENV" = "production" ]; then
+  echo "Generating Prisma client..."
+  npx prisma generate
   echo "Building TypeScript..."
   npm run build
   echo "Starting production server..."
