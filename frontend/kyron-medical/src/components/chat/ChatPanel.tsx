@@ -203,11 +203,16 @@ const ChatPanel: FC<ChatPanelProps> = ({ onNewBooking, profileComplete = true })
           setToolStatus(null);
           finalizePendingAssistant(assistantMessage.id);
 
-          if (event.data.messageId) {
+          const serverMessageId =
+            typeof event.data.messageId === "string" && event.data.messageId.length > 0
+              ? event.data.messageId
+              : null;
+
+          if (serverMessageId) {
             setMessages((prev) =>
               prev.map((message) =>
                 message.id === assistantMessage.id
-                  ? { ...message, id: event.data.messageId, pending: false }
+                  ? { ...message, id: serverMessageId, pending: false }
                   : message
               )
             );

@@ -1,4 +1,4 @@
-import type { ApiResponse } from "../types/agentTypes";
+import type { ApiResponse } from "../types/apiTypes";
 
 const appendUniqueMessage = (messages: Set<string>, value?: unknown) => {
   if (typeof value === "string" && value.trim().length > 0) {

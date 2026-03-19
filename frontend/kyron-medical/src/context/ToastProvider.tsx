@@ -17,7 +17,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
   const [toasts, setToasts] = useState<ActiveToast[]>([]);
 
   useEffect(() => {
-    return subscribeToToasts((toast) => {
+    const unsubscribe = subscribeToToasts((toast) => {
       setToasts((prev) => [
         ...prev,
         {
@@ -26,6 +26,10 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
         },
       ]);
     });
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   const removeToast = useCallback((id: number) => {
@@ -69,4 +73,3 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
     </>
   );
 };
-

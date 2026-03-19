@@ -1,4 +1,4 @@
-import type { ApiResponse } from "../types/agentTypes";
+import type { ApiResponse } from "../types/apiTypes";
 
 const DEFAULT_TTL = 60_000; // 1 minute
 
