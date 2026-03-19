@@ -38,6 +38,8 @@ if [ "$NODE_ENV" = "production" ]; then
   npx prisma generate
   echo "Building TypeScript..."
   npm run build
+  echo "Copying Prisma client to dist..."
+  cp -r src/generated dist/generated
   echo "Starting production server..."
   npm run start
 else
