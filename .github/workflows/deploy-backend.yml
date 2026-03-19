@@ -76,10 +76,19 @@ jobs:
 
       - name: Create Elastic Beanstalk application version
         run: |
-          aws elasticbeanstalk create-application-version \
+          EXISTING=$(aws elasticbeanstalk describe-application-versions \
             --application-name "${EB_APPLICATION_NAME}" \
-            --version-label "${{ steps.bundle.outputs.version_label }}" \
-            --source-bundle S3Bucket="${EB_SOURCE_BUCKET}",S3Key="${{ steps.bundle.outputs.bundle_key }}"
+            --version-labels "${{ steps.bundle.outputs.version_label }}" \
+            --query 'ApplicationVersions[0].VersionLabel' \
+            --output text)
+          if [ "${EXISTING}" = "${{ steps.bundle.outputs.version_label }}" ]; then
+            echo "Version already exists, skipping creation."
+          else
+            aws elasticbeanstalk create-application-version \
+              --application-name "${EB_APPLICATION_NAME}" \
+              --version-label "${{ steps.bundle.outputs.version_label }}" \
+              --source-bundle S3Bucket="${EB_SOURCE_BUCKET}",S3Key="${{ steps.bundle.outputs.bundle_key }}"
+          fi
 
       - name: Update Elastic Beanstalk environment
         run: |
